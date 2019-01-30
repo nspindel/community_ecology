@@ -1,0 +1,258 @@
+---
+title: "Spring 2019 Community Ecology Assignment 1"
+author: "Nathan Spindel"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+## Packages
+Set working directory and load necessary R packages:
+```{r, collapse=TRUE}
+ipak <- function(pkg) {
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+
+setwd("C:/Users/nates/OneDrive/Documents/Community Ecology/")
+
+packages <- c("tidyverse", "vegan")
+ipak(packages)
+```
+## Data
+
+Witman JD, Lamb RW (2018) Persistent differences between coastal and offshore kelp forest communities in a warming Gulf of Maine. PLOS ONE 13(1): e0189388.  
+[**DOI**](https://doi.org/10.1371/journal.pone.0189388)  
+Witman JD, Lamb RW (2018) Data from: Persistent differences between coastal and offshore kelp forest communities in a warming Gulf of Maine. Dryad Digital Repository.  
+[**Dryad Data Package**](https://doi.org/10.5061/dryad.5637n)  
+
+Load datasets:  
+1) Percent cover values for benthic community organisms including all sessile invertebrate and macroalgae species.  
+```{r collapse=TRUE}
+benthic.percent.cover=read.csv("Whitman_and_Lamb_2018/data/data/GOM_benthic_full.csv", header=T, sep=",") %>%
+  # Combine duplicate categories and remove excess
+  mutate(`Botrylloides.violaceous` = (Unknown.orange.ascidian + Bottryloides..orange.), Dendrobeania.murrayana = (Unknown.Bryozoan + Dendrobeania), Diplosoma.listeriatum = (Diplosoma+ Bottryloides..gray.), Halisarca.sp = (Unknown.Yellow.Sponge+ Halisarca)) %>%
+  select(-Unknown.orange.ascidian, -Bottryloides..orange., -Unknown.Bryozoan, -Dendrobeania, -Diplosoma, -Bottryloides..gray., -Unknown.Yellow.Sponge, -Halisarca) %>%
+  rename(Didemnum.vexillum = brown.Didemnum, Eudendrium.sp. = branched.hydroid, Lithothamnion.sp. = pink.coralline..bumpy, Boltenia.echinata = cactus.sea.squirt, Corallinaceae.sp. = pink.coralline..smooth, Balanus.sp. = Balanus.spp., Isodictya.deichmannae = Isodictya..sponge., Heterosiphonia.japonica = Heterosiphonia, Modiolus.sp. = Modiolus, Halichondria.sp. = Halichondria, Bugula.sp. = Bugula, Hildenbrandia.sp. = Hildenbrandia, Schizomavella.sp. = Schizomavella, Polysiphonia.sp. = Polysiphonia, Chondrus.crust = chondrus.mat, Parasmittina.sp = Parasmittina, Gonactinia.sp. = Gonactinia, Gracilaria.sp. = Gracilaria, Anomia.sp. = Anomia, Crepidula.sp. = Crepidula, Tonicella.sp. = Tonicella..chiton., Leucoselenia.sp. = Leucoselenia..sponge., Molgula.sp. = Molgula..tunicate..sea.grape.) %>%
+  mutate(total_organic = sediment.diatom + Heterosiphonia.japonica + Euthora.cristata + Modiolus.sp. + Corallinaceae.sp. + Phycodrys.fimbriata + Ptilota.serrata + Palmaria.palmata + Chondrus.crispus + Balanus.sp. + Halichondria.sp. + Lithothamnion.sp. + Mytilus.edulis + Eudendrium.sp. + Aplidium.pallidum + Bugula.sp. + Hildenbrandia.sp. + Schizomavella.sp. + Polysiphonia.sp. + Lomentaria.orcadensis + Corallina.officinalis + Ulva.lactuca + Didemnum.albidum + Terebratulina + Dendrodoa.carnea + Chondrus.crust + Parasmittina.sp + Boltenia.echinata + Aplidium.constellatum + Gonactinia.sp. + Isodictya.deichmannae + Gracilaria.sp. + Anomia.sp. + Crepidula.sp. + Tonicella.sp. + Leucoselenia.sp. + Molgula.sp. + Didemnum.vexillum + Botrylloides.violaceous + Dendrobeania.murrayana + Diplosoma.listeriatum + Halisarca.sp)
+# Get values for all organic benthic substrates into proportional cover out of total
+benthic.percent.cover[,-c(1:7)]=benthic.percent.cover[,-c(1:7)]/benthic.percent.cover$total_organic
+# Remove totals column
+benthic.percent.cover = benthic.percent.cover[,-50]
+```
+## 1. Simple Metrics
+
+Simple metrics for each community type. For each community type, combine all your samples and determine:  
+a. Overall number of species (S) 
+```{r collapse=TRUE}
+# Store vector of metadata variables.
+metadata_vars <- c("Site", "Date", "Region", "Quadrat", "Bare.Rock", "Off.Quadrat..incl..dead.mussel.shells.", "Unsure")
+# Store data frame containing offshore benthic community data.
+benthic.percent.cover.onshore <- benthic.percent.cover %>%
+  filter(Region=="Onshore") %>%
+  select(-one_of(metadata_vars))
+# Drop columns with sum < 0.
+benthic.percent.cover.onshore.nozeroes <- benthic.percent.cover.onshore[,colSums(benthic.percent.cover.onshore) > 0]
+# Store vector containing sum of distinct species for offshore region.
+overall.species.number.onshore <- ncol(benthic.percent.cover.onshore.nozeroes)
+```
+Response (1 of 2): For the onshore benthic community, S = `r overall.species.number.onshore`
+```{r collapse=TRUE}
+# Store data frame containing offshore benthic community data.
+benthic.percent.cover.offshore <- benthic.percent.cover %>%
+  filter(Region=="Offshore") %>%
+  select(-one_of(metadata_vars))
+# Drop columns with sum < 0.
+benthic.percent.cover.offshore.nozeroes <- benthic.percent.cover.offshore[,colSums(benthic.percent.cover.offshore) > 0]
+# Store vector containing sum of distinct species for offshore region.
+overall.species.number.offshore <- ncol(benthic.percent.cover.offshore.nozeroes)
+```
+Response (2 of 2):For the offshore benthic community, S = `r overall.species.number.offshore`  
+
+b. Overall diversity using Hill indices (a = 0, 1, 2, at minimum). 
+```{r collapse=TRUE}
+# Aggregate average abundance of each species per site by region.
+benthic.perplot = aggregate(benthic.percent.cover[,5:dim(benthic.percent.cover)[2]], list(benthic.percent.cover$Site, benthic.percent.cover$Region), mean, na.rm = T)
+# Restore column names for grouping factors that were overwritten by aggregate function.
+colnames(benthic.perplot)[1:2] = c("Site", "Region")
+# Store data frame which excludes metadata variables.
+benthic.temp.1 <- benthic.perplot %>%
+  select(-one_of(metadata_vars))
+# onshore.temp.2 <- onshore.temp.1[rowSums(onshore.temp.1) > 0]
+# Drop columns with sum < 0 (i.e. species did not occur on this plot).
+benthic.temp.2 <- benthic.temp.1[,colSums(benthic.temp.1) > 0]
+# Order variables by column sum in decreasing order.  
+benthic.temp.3 <- benthic.temp.2[c(order(colSums(benthic.temp.2), decreasing = T))]
+# Add metadata back to data frame.
+benthic.temp.4 <- cbind(benthic.perplot[,1:5], benthic.temp.3)  
+# Drop rows with sum < 0 (i.e. "empty"" plots).
+benthic.prepared <- benthic.temp.4[rowSums(benthic.temp.4[,6:dim(benthic.temp.4)[2]]) > 0,] 
+# Aggregate by region, calculate average abundances per species.
+benthic.region <- benthic.prepared %>%
+  group_by(Region) %>%
+  summarise_at(vars(Heterosiphonia.japonica:Terebratulina), mean)
+# Calculate Hill numbers.
+hill.indices.by.region <- renyi(benthic.region[,2:ncol(benthic.region)], hill = TRUE)
+rownames(hill.indices.by.region) <- benthic.region$Region
+```
+Response: See plot below of Hill indices aggregated by Region. 
+```{r}
+# Plot Renyi results.
+plot(hill.indices.by.region, main="Regional Benthic Community Diversity", xlab="a", ylab="Diversity (Hill number)")
+```
+
+
+c. Before going on, tell me if you think the communities differ and how, based on the Hill indices.
+```{r collapse=TRUE}
+hill.indices.by.region
+```
+Response: Based on the Hill indices shown above, it appears that the Offshore benthic community is more diverse on average. Although from a=0:0.5 diversity is higher in the Onshore community, diversity is higher in the Offshore community for all a >=1. 
+
+
+2. (1 pt.) Now, determine the Hill indices (0, 1, and 2) for each of your individual samples
+(n => 10 per community type). Look at the distributions and, if necessary, try to
+transform your data to be somewhat normal. Then use t-tests or ANOVA (or a
+nonparametric test, if appropriate) to see if the two community types significantly differ
+in these measures.
+```{r collapse=TRUE}
+# Calculate Hill indices by sample (quadrat) and region.
+hill.indices.by.sample.offshore <- renyi(benthic.percent.cover.offshore.nozeroes, scales = c(0, 1, 2), hill = TRUE)
+hill.indices.by.sample.onshore <- renyi(benthic.percent.cover.onshore.nozeroes, scales = c(0, 1, 2), hill = TRUE)
+# Run t-tests of Offshore versus Onshore Hill diversity by sample for each "a" value.
+t.test_results <- Map(t.test, x = hill.indices.by.sample.offshore, y = hill.indices.by.sample.onshore)
+# Collate p-values from t-tests.
+p.values <- sapply(t.test_results, function(x) x$p.value)
+```
+Response (1 of 2): For a = 0 and a = 1, the Offshore and Onshore sample-level community Hill indices are significantly different. See test results below:
+```{r collapse=TRUE}
+t.test_results[c(1,2)]
+```
+Response (2 of 2): For a = 2, the Offshore and Onshore sample-level community Hill indices are NOT significantly different. See test results below:
+```{r collapse=TRUE}
+t.test_results[3]
+```
+
+
+3. (2 pts.) Construct species accumulation curves for your two community types (see notes
+below). Rarify your data and compare the number of species found in the two
+community types. Are they different?  
+
+```{r}
+sp1 <- specaccum(benthic.percent.cover.onshore.nozeroes)
+sp2 <- specaccum(benthic.percent.cover.onshore.nozeroes, "random")
+sp3 <- specaccum(benthic.percent.cover.offshore.nozeroes)
+sp4 <- specaccum(benthic.percent.cover.offshore.nozeroes, "random")
+plot(sp1, ci.type="poly", col="blue", lwd=2, ci.lty=0, ci.col="lightblue", main = "Species Accumulation in Benthic Community",ylab = "Species")
+boxplot(sp2, col="yellow", add=TRUE, pch="+")
+plot(sp3, add = TRUE, col=2, lwd=2)
+boxplot(sp4, col="yellow", add=TRUE, pch="+")
+legend("bottomright", title="Region", c("Offshore", "Onshore"), fill = c("red", "lightblue"))
+```
+  
+Response: Although it is not straightforward to rarefy percentage data (percent cover as opposed to counts of individuals), it appears that the Onshore and Offshore communities are different. 
+
+4. (2 pts.) Graphic representation of each community type. Construct:
+a. A frequency histogram (i.e. Preston-type graph) for each community
+```{r}
+par(mar = c(4,5,1,1), mfrow = c(1,2))  #  set margins
+hist(colSums(benthic.percent.cover.offshore.nozeroes[,6:dim(benthic.percent.cover.offshore.nozeroes)[2]]), breaks = 40, main = "Offshore", xlab = "Species abundance")
+hist(colSums(benthic.percent.cover.onshore.nozeroes[,6:dim(benthic.percent.cover.onshore.nozeroes)[2]]), breaks = 40, main = "Onshore", xlab = "Species abundance")
+```
+
+b. A rank abundance curve for each community type (remember to use log-abundance)
+```{r}
+offshore.abunds = sort(colSums(benthic.percent.cover.offshore.nozeroes[1:dim(benthic.percent.cover.offshore.nozeroes)[2]]), decreasing = T)
+plot(1:(dim(benthic.percent.cover.offshore.nozeroes)[2]), log(offshore.abunds), typ = "b", xlab = "Rank", ylab = "Species abundance", col = "red") 
+onshore.abunds = sort(colSums(benthic.percent.cover.onshore.nozeroes[1:dim(benthic.percent.cover.onshore.nozeroes)[2]]), decreasing = T)
+lines(1:(dim(benthic.percent.cover.onshore.nozeroes)[2]), log(onshore.abunds), typ = "b", col = 1)
+legend("topright", title="Region", c("Offshore", "Onshore"), fill = c("red", "black"))
+```
+
+c. Look at your rank abundance curves and tell me what best fits: log-normal, broken
+stick, log-series, geometric series or none of these? (R has a nice function to do this)  
+
+Response: my rank abundance curves seem to fit log-normal distributions best. 
+
+d. Now, with a better idea of abundance patterns, again tell me if you think the
+community types differ and how.  
+
+Response: Based on the rank abundance curves shown above, it appears that the Offshore community is probably more diverse because the curve is slightly steeper. 
+
+5. (2 pts.) Try some sort of ordination on your data to both visually and statistically identify
+differences between your community types. Ideally, you would do this using R.  
+# Perform arcsine square root transformation on percent cover data for multivariate analysis.
+```{r collapse=TRUE}
+benthic.transformed = benthic.percent.cover
+benthic.transformed[,-c(1:7)] = asin(sqrt(benthic.transformed[,-c(1:7)]))
+```
+# Perform multivariate analysis of variance (PERMANOVA) on factor Site  
+```{r collapse=TRUE}
+permanova.by.site.results = adonis(benthic.transformed[,-c(1:7)] ~ benthic.percent.cover$Site, perm=1000)
+permanova.by.site.results
+```
+# Perform multivariate analysis of variance (PERMANOVA) on factor Region
+```{r collapse=TRUE}
+permanova.by.region.results = adonis(benthic.transformed[,-c(1:7)] ~ benthic.percent.cover$Region, perm=1000)
+permanova.by.region.results
+```
+# Create dissimilarity matrix using MetaMDS  
+```{r collapse=TRUE}
+benthic.NMDS = metaMDS(benthic.transformed[,-c(1:7)], distance="bray", autotransform = F)
+```
+# Get plot metadata
+```{r}
+benthic.NMDS.points = cbind(benthic.transformed[,1:4], benthic.NMDS$points)
+```
+# Set color to region
+```{r}
+color.setting <- as.vector(benthic.NMDS.points$Region)
+color.setting[color.setting=="Onshore"] <- "lightseagreen"
+color.setting[color.setting=="Offshore"] <- "navyblue"
+color.setting=as.factor(color.setting)
+```
+# Set pch (symbol type) to site
+```{r}
+shape.setting <- as.vector(benthic.NMDS.points$Site)
+shape.setting[shape.setting=="Lunging Island"]<- 8
+shape.setting[shape.setting=="Mingo Rock"] <- 4
+shape.setting[shape.setting=="Spout Shoal"]<- 3
+shape.setting[shape.setting=="Star Island"]<- 5
+shape.setting[shape.setting=="Ammen Rock 1"]<- 0
+shape.setting[shape.setting=="Ammen Rock 2"]<- 1
+shape.setting[shape.setting=="Ammen Rock 1 1987"]<- 2
+shape.setting=as.numeric(shape.setting)
+par(pty ="m")
+```
+# Plot NMDS ordination
+```{r}
+ordiplot(benthic.NMDS, type="n", xlab="nMDS 1", ylab="nMDS 2", ylim = c(-1.2, .75), xlim = c(-1.2, 1.8))
+ordihull(benthic.NMDS.points[c(5:6)], benthic.NMDS.points$Site, lty=1, col="#525252", lwd=.3)
+points(benthic.NMDS.points[c(5:6)], col=as.character(color.setting), pch=shape.setting, cex=1)
+legend("bottomright", 
+       legend = unique(as.factor(benthic.NMDS.points$Site)),
+       pch= c(8, 4, 3, 5, 0, 1, 2),
+       col = c("lightseagreen", "lightseagreen", "lightseagreen", "lightseagreen", "navyblue", "navyblue", "navyblue"),
+       cex=.5)
+```
+  
+6. (2 pts.) Finally, investigate correlations between environmental variables and your
+ordination, using something like "envfit" or "ordisurf" in R. What do you think this tells
+you about your ordination?
+```{r}
+ordiplot(benthic.NMDS, type="n", xlab="nMDS 1", ylab="nMDS 2", ylim = c(-1.2, .75), xlim = c(-1.2, 1.8))
+ordihull(benthic.NMDS.points[c(5:6)], benthic.NMDS.points$Site, lty=1, col="#525252", lwd=.3)
+points(benthic.NMDS.points[c(5:6)], col=as.character(color.setting), pch=shape.setting, cex=1)
+legend("bottomright", 
+       legend = unique(as.factor(benthic.NMDS.points$Site)),
+       pch= c(8, 4, 3, 5, 0, 1, 2),
+       col = c("lightseagreen", "lightseagreen", "lightseagreen", "lightseagreen", "navyblue", "navyblue", "navyblue"),
+       cex=.5)
+benthic.envfit = envfit(benthic.NMDS, benthic.transformed[,c(5,7)], na.rm = T)
+plot(benthic.envfit, cex = 0.8, p.max = 0.1)
+```
+  
+Response: A substantial portion of the dissimilarity between Offshore and Onshore benthic communities is correlated with an increase in the percent cover of bare rock and dead mussel shells in Offshore versus Onshore sites.
